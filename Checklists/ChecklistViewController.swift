@@ -8,7 +8,79 @@
 
 import UIKit
 
-class ChecklistViewController: UITableViewController {
+class ChecklistViewController: UITableViewController, ItemDetailViewControllerDelegate {
+  //This tells the compiler that ChecklistViewController now promises to do the things from the AddItemViewControllerDelegate protocol.
+  // the two methods below are the methods where I've shifted responsibility to the delegate.
+  func itemDetailViewControllerDidCancel(controller: ItemDetailViewController) {
+    dismissViewControllerAnimated(true, completion: nil)
+  }
+  
+  func itemDetailViewController(controller: ItemDetailViewController, didFinishAddingItem item: ChecklistItem) {
+    
+    let newRowIndex = items.count
+    
+    items.append(item)
+    
+    let indexPath = NSIndexPath(forRow: newRowIndex, inSection: 0)
+    let indexPaths = [indexPath]
+    tableView.insertRowsAtIndexPaths(indexPaths, withRowAnimation: .Automatic)
+    
+    dismissViewControllerAnimated(true, completion: nil)
+    
+    saveChecklistItems()
+  }
+  
+  func itemDetailViewController(controller: ItemDetailViewController, didFinishEditingItem item: ChecklistItem) {
+    
+    if let index = find(items, item) {
+      let indexPath = NSIndexPath(forRow: index, inSection: 0)
+      if let cell = tableView.cellForRowAtIndexPath(indexPath){
+        configureTextForCell(cell, withChecklistItem: item)
+      }
+  }
+  
+    dismissViewControllerAnimated(true, completion: nil)
+    saveChecklistItems()
+  }
+  
+  func documentsDirectory() -> String {
+    let paths = NSSearchPathForDirectoriesInDomains(.DocumentDirectory, .UserDomainMask, true) as! [String]
+    return paths[0]
+  }
+  
+  //store the checklist items
+  func dataFilePath() -> String {
+    let directory = documentsDirectory()
+    return directory.stringByAppendingPathComponent("Checklists.plist")
+    
+  }
+  
+  func saveChecklistItems(){
+    let data = NSMutableData()
+    let archiver = NSKeyedArchiver(forWritingWithMutableData: data)
+    archiver.encodeObject(items, forKey: "ChecklistItems")
+    archiver.finishEncoding()
+    data.writeToFile(dataFilePath(), atomically: true)
+  }
+  
+  
+  override func prepareForSegue(segue: UIStoryboardSegue, sender: AnyObject?) {
+    if segue.identifier == "AddItem" {
+      let navigationController = segue.destinationViewController as! UINavigationController
+      let controller = navigationController.topViewController as! ItemDetailViewController
+      controller.delegate = self
+    } else if segue.identifier == "EditItem" {
+      let navigationController = segue.destinationViewController as! UINavigationController
+      
+      let controller = navigationController.topViewController as! ItemDetailViewController
+      
+      controller.delegate = self
+      
+      if let indexPath = tableView.indexPathForCell(sender as! UITableViewCell){
+        controller.itemToEdit = items[indexPath.row]
+      }
+    }
+  }
   
   var items: [ChecklistItem]
 
@@ -52,7 +124,23 @@ class ChecklistViewController: UITableViewController {
     items.append(row4item)
     
     super.init(coder: aDecoder)
+    loadChecklistItems()
+    
+    println("Documents folder is \(documentsDirectory())")
+    println("Data file path is \(dataFilePath())")
   
+  }
+  
+  func loadChecklistItems(){
+    let path = dataFilePath()
+    
+    if NSFileManager.defaultManager().fileExistsAtPath(path){
+      if let data = NSData(contentsOfFile: path){
+        let unarchiver = NSKeyedUnarchiver(forReadingWithData: data)
+        items = unarchiver.decodeObjectForKey("ChecklistItems") as! [ChecklistItem]
+        unarchiver.finishDecoding()
+      }
+    }
   }
   
   override func viewDidLoad() {
@@ -101,6 +189,16 @@ class ChecklistViewController: UITableViewController {
     return cell
   }
   
+  override func tableView(tableView: UITableView, commitEditingStyle editingStyle: UITableViewCellEditingStyle, forRowAtIndexPath indexPath: NSIndexPath){
+    items.removeAtIndex(indexPath.row)
+  
+    let indexPaths = [indexPath]
+    tableView.deleteRowsAtIndexPaths(indexPaths, withRowAnimation: .Automatic)
+    
+    saveChecklistItems()
+  
+  }
+  
   
   //The first parameter is the UITableView object on whose behalf these methods are invoked. This is done for convenience, so you won’t have to make an @IBOutlet in order to send messages back to the table view.
   // the return type of the method is at the end, after the -> arrow. If there is no arrow, as in tableView(didSelectRowAtIndexPath), then the method is not supposed to return a value.
@@ -118,18 +216,20 @@ class ChecklistViewController: UITableViewController {
   
     // brief turns row grey on the tableview object
     tableView.deselectRowAtIndexPath(indexPath, animated: true)
+    
+    saveChecklistItems()
   }
   
   
   //Swift allows quite a bit of flexibility in the naming of methods, but standard practice is to put the name of the first parameter into the name of the method, as in configureCheckmarkForCell(...)
   
   func configureCheckmarkForCell(cell: UITableViewCell, withChecklistItem item: ChecklistItem){
-      
+    
+      let label = cell.viewWithTag(1001) as! UILabel
       if item.checked {
-        //if there is one, you look at the cell's accessoryType - none or checkmark
-          cell.accessoryType = .Checkmark
+          label.text = "√"
         } else {
-          cell.accessoryType = .None
+          label.text = ""
       }
 
       
@@ -139,7 +239,6 @@ class ChecklistViewController: UITableViewController {
     let label = cell.viewWithTag(1000) as! UILabel
     label.text = item.text
   }
-  
   
 
 
